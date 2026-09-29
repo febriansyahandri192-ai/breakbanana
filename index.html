@@ -1,0 +1,2195 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title id="page-title-meta">Crew Break Attendance System</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              500: '#334155',
+              600: '#1e293b',
+              700: '#0f172a',
+              900: '#020617',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Html5-Qrcode -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <!-- XLSX -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    html.dark .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    html.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+    }
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      #printable-barcode-card, #printable-barcode-card * {
+        visibility: visible;
+      }
+      #printable-barcode-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-900 antialiased selection:bg-slate-700 selection:text-white transition-colors duration-200">
+
+  <div id="app" class="min-h-screen flex flex-col flex-1">
+    <!-- UI dynamic -->
+  </div>
+
+  <script>
+    const APP_STATE = {
+      currentUser: null,
+      activeTab: 'dashboard',
+      theme: localStorage.getItem('cba_theme') || 'light',
+      accentColor: localStorage.getItem('cba_accent') || 'slate',
+      crews: [],
+      breaks: [],
+      breakTypes: [],
+      admins: [],
+      requests: [],
+      statuses: [],
+      settings: {
+        appTitle: localStorage.getItem('cba_app_title') || 'Crew Break Attendance System',
+        appDescription: localStorage.getItem('cba_app_desc') || 'Portal scanning & monitoring istirahat crew operasional.',
+        companyName: localStorage.getItem('cba_company') || 'Kedai Kopi Utama',
+        companyLogo: localStorage.getItem('cba_company_logo') || '',
+      },
+      scanner: null,
+      activeScanResult: null,
+      searchQuery: '',
+      historyFilters: { date: '', crewId: '', breakType: '', status: '' }
+    };
+
+    let timerInterval = null;
+
+    function getAccentClasses() {
+      const map = {
+        slate: {
+          bg: 'bg-slate-900 dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600',
+          text: 'text-slate-900 dark:text-white',
+          border: 'border-slate-900 dark:border-slate-600',
+          ring: 'focus:ring-slate-600',
+          badge: 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+        },
+        emerald: {
+          bg: 'bg-emerald-700 hover:bg-emerald-800',
+          text: 'text-emerald-700 dark:text-emerald-400',
+          border: 'border-emerald-600',
+          ring: 'focus:ring-emerald-600',
+          badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+        },
+        indigo: {
+          bg: 'bg-indigo-600 hover:bg-indigo-700',
+          text: 'text-indigo-600 dark:text-indigo-400',
+          border: 'border-indigo-600',
+          ring: 'focus:ring-indigo-600',
+          badge: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300'
+        },
+        amber: {
+          bg: 'bg-amber-600 hover:bg-amber-700',
+          text: 'text-amber-600 dark:text-amber-400',
+          border: 'border-amber-600',
+          ring: 'focus:ring-amber-600',
+          badge: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+        },
+        rose: {
+          bg: 'bg-rose-600 hover:bg-rose-700',
+          text: 'text-rose-600 dark:text-rose-400',
+          border: 'border-rose-600',
+          ring: 'focus:ring-rose-600',
+          badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+        }
+      };
+      return map[APP_STATE.accentColor] || map.slate;
+    }
+
+    function initSeedData() {
+      applyTheme();
+      updateMetaTitle();
+
+      const isInitialized = localStorage.getItem('cba_initialized');
+
+      const initialBreakTypes = [
+        { id: 'bt_1', name: 'Meal Break', maxMinutes: 45 },
+        { id: 'bt_2', name: 'Short Break', maxMinutes: 15 },
+        { id: 'bt_3', name: 'Personal Break', maxMinutes: 10 },
+        { id: 'bt_4', name: 'Prayer Break', maxMinutes: 20 },
+      ];
+
+      const initialCrews = [
+        { id: 'crw_1', crewId: 'CRW001', name: 'Budi Santoso', gender: 'Laki-laki', position: 'Senior Barista', department: 'Service', phone: '081234567890', photo: '', password: 'CRW001', status: 'Active', createdAt: '2026-01-10' },
+        { id: 'crw_2', crewId: 'CRW002', name: 'Siti Rahma', gender: 'Perempuan', position: 'Cashier', department: 'Front Desk', phone: '081298765432', photo: '', password: 'CRW002', status: 'Active', createdAt: '2026-01-12' },
+        { id: 'crw_3', crewId: 'CRW003', name: 'Andi Wijaya', gender: 'Laki-laki', position: 'Kitchen Crew', department: 'Kitchen', phone: '081355554444', photo: '', password: 'CRW003', status: 'Active', createdAt: '2026-02-01' },
+      ];
+
+      const initialAdmins = [
+        { id: 'adm_1', email: 'manager@email.com', password: 'password123', name: 'Utama Manager', role: 'Super Admin', phone: '08123456789', createdAt: '2026-01-01' },
+        { id: 'adm_2', email: 'supervisor@email.com', password: 'password123', name: 'Siti Supervisor', role: 'Shift Leader', phone: '08198765432', createdAt: '2026-01-05' }
+      ];
+
+      const initialStatuses = [
+        { id: 'st_1', authorName: 'Utama Manager', authorRole: 'Admin', avatar: '', text: 'Semangat untuk tim shift sore hari ini! Pastikan istirahat tepat waktu.', photo: '', createdAt: new Date().toISOString() }
+      ];
+
+      if (!isInitialized) {
+        localStorage.setItem('cba_crews', JSON.stringify(initialCrews));
+        localStorage.setItem('cba_breaks', JSON.stringify([]));
+        localStorage.setItem('cba_breakTypes', JSON.stringify(initialBreakTypes));
+        localStorage.setItem('cba_admins', JSON.stringify(initialAdmins));
+        localStorage.setItem('cba_requests', JSON.stringify([]));
+        localStorage.setItem('cba_statuses', JSON.stringify(initialStatuses));
+        localStorage.setItem('cba_initialized', 'true');
+      }
+
+      APP_STATE.crews = JSON.parse(localStorage.getItem('cba_crews') || '[]');
+      APP_STATE.breaks = JSON.parse(localStorage.getItem('cba_breaks') || '[]');
+      APP_STATE.breakTypes = JSON.parse(localStorage.getItem('cba_breakTypes') || '[]');
+      APP_STATE.admins = JSON.parse(localStorage.getItem('cba_admins') || '[]');
+      APP_STATE.requests = JSON.parse(localStorage.getItem('cba_requests') || '[]');
+      APP_STATE.statuses = JSON.parse(localStorage.getItem('cba_statuses') || '[]');
+
+      const storedUser = localStorage.getItem('cba_user');
+      APP_STATE.currentUser = storedUser ? JSON.parse(storedUser) : null;
+    }
+
+    function saveData() {
+      localStorage.setItem('cba_crews', JSON.stringify(APP_STATE.crews));
+      localStorage.setItem('cba_breaks', JSON.stringify(APP_STATE.breaks));
+      localStorage.setItem('cba_breakTypes', JSON.stringify(APP_STATE.breakTypes));
+      localStorage.setItem('cba_admins', JSON.stringify(APP_STATE.admins));
+      localStorage.setItem('cba_requests', JSON.stringify(APP_STATE.requests));
+      localStorage.setItem('cba_statuses', JSON.stringify(APP_STATE.statuses));
+      localStorage.setItem('cba_theme', APP_STATE.theme);
+      localStorage.setItem('cba_accent', APP_STATE.accentColor);
+      localStorage.setItem('cba_app_title', APP_STATE.settings.appTitle);
+      localStorage.setItem('cba_app_desc', APP_STATE.settings.appDescription);
+      localStorage.setItem('cba_company', APP_STATE.settings.companyName);
+      localStorage.setItem('cba_company_logo', APP_STATE.settings.companyLogo || '');
+      
+      if (APP_STATE.currentUser) {
+        localStorage.setItem('cba_user', JSON.stringify(APP_STATE.currentUser));
+      } else {
+        localStorage.removeItem('cba_user');
+      }
+      updateMetaTitle();
+    }
+
+    function updateMetaTitle() {
+      const el = document.getElementById('page-title-meta');
+      if (el) el.innerText = APP_STATE.settings.appTitle;
+    }
+
+    function applyTheme() {
+      if (APP_STATE.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      localStorage.setItem('cba_theme', APP_STATE.theme);
+    }
+
+    function toggleTheme() {
+      APP_STATE.theme = APP_STATE.theme === 'dark' ? 'light' : 'dark';
+      applyTheme();
+      renderApp();
+      showToast(`Mode ${APP_STATE.theme === 'dark' ? 'Gelap' : 'Terang'} diaktifkan`, 'info');
+    }
+
+    function setAccentColor(colorName) {
+      APP_STATE.accentColor = colorName;
+      saveData();
+      renderApp();
+      showToast(`Tema warna diubah ke ${colorName}`, 'success');
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container') || createToastContainer();
+      const toast = document.createElement('div');
+      
+      const bgColors = {
+        success: 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900',
+        error: 'bg-rose-700 text-white',
+        warning: 'bg-amber-600 text-white',
+        info: 'bg-slate-700 text-white'
+      };
+
+      const icons = {
+        success: 'fa-circle-check',
+        error: 'fa-triangle-exclamation',
+        warning: 'fa-circle-exclamation',
+        info: 'fa-circle-info'
+      };
+
+      toast.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl transform transition-all duration-300 translate-y-2 opacity-0 text-sm font-medium ${bgColors[type] || bgColors.info}`;
+      toast.innerHTML = `
+        <i class="fa-solid ${icons[type] || icons.info} text-base"></i>
+        <span>${message}</span>
+      `;
+
+      container.appendChild(toast);
+      setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function createToastContainer() {
+      const container = document.createElement('div');
+      container.id = 'toast-container';
+      container.className = 'fixed bottom-20 md:bottom-6 right-4 left-4 md:left-auto md:w-96 z-50 flex flex-col gap-2 pointer-events-none';
+      document.body.appendChild(container);
+      return container;
+    }
+
+    function formatTime(isoString) {
+      if (!isoString) return '-';
+      const d = new Date(isoString);
+      return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function formatDuration(seconds) {
+      if (seconds === null || seconds === undefined || isNaN(seconds)) return '-';
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      const pad = (n) => n.toString().padStart(2, '0');
+      if (hrs > 0) return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+      return `${pad(mins)}:${pad(secs)}`;
+    }
+
+    function getElapsedTimeInSeconds(startTimeIso) {
+      const start = new Date(startTimeIso).getTime();
+      const now = new Date().getTime();
+      return Math.max(0, Math.floor((now - start) / 1000));
+    }
+
+    function startLiveTimers() {
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        document.querySelectorAll('.live-timer').forEach(el => {
+          const startTime = el.getAttribute('data-start');
+          if (startTime) el.innerText = formatDuration(getElapsedTimeInSeconds(startTime));
+        });
+      }, 1000);
+    }
+
+    /* ================= LOGIN VIEW ================= */
+    let currentLoginRole = 'admin';
+
+    function setLoginRole(role) {
+      currentLoginRole = role;
+      const adminBtn = document.getElementById('role-admin-btn');
+      const crewBtn = document.getElementById('role-crew-btn');
+      const helpText = document.getElementById('login-help-text');
+      const identityLabel = document.getElementById('identity-label');
+      const identityInput = document.getElementById('login-identity');
+
+      if (role === 'admin') {
+        adminBtn.className = 'flex-1 py-2 font-bold rounded-xl text-xs bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow transition';
+        crewBtn.className = 'flex-1 py-2 font-bold rounded-xl text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white transition';
+        if (helpText) helpText.innerText = 'Login Admin dengan Email terdaftar';
+        if (identityLabel) identityLabel.innerText = 'Email Admin';
+        if (identityInput) { identityInput.placeholder = 'admin@email.com'; identityInput.value = 'manager@email.com'; }
+      } else {
+        crewBtn.className = 'flex-1 py-2 font-bold rounded-xl text-xs bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow transition';
+        adminBtn.className = 'flex-1 py-2 font-bold rounded-xl text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white transition';
+        if (helpText) helpText.innerText = 'Login Crew dengan ID Crew / No HP (Default pass: ID Crew)';
+        if (identityLabel) identityLabel.innerText = 'ID Crew / No HP';
+        if (identityInput) { identityInput.placeholder = 'CRW001'; identityInput.value = 'CRW001'; }
+      }
+    }
+
+    function renderLoginView() {
+      const accent = getAccentClasses();
+      return `
+        <div class="min-h-screen flex items-center justify-center p-4 bg-slate-900">
+          <div class="w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl p-8 border border-slate-200 dark:border-slate-700">
+            <div class="text-center mb-6">
+              ${APP_STATE.settings.companyLogo ? `
+                <img src="${APP_STATE.settings.companyLogo}" alt="Logo" class="w-16 h-16 object-cover rounded-2xl mx-auto mb-4 shadow-md border border-slate-200 dark:border-slate-700">
+              ` : `
+                <div class="w-16 h-16 ${accent.bg} rounded-2xl flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
+                  <i class="fa-solid fa-mug-hot text-2xl"></i>
+                </div>
+              `}
+              <h1 class="text-2xl font-bold text-slate-900 dark:text-white">${APP_STATE.settings.appTitle}</h1>
+              <p id="login-help-text" class="text-xs text-slate-500 dark:text-slate-400 mt-1">Pilih peran login Anda di bawah</p>
+            </div>
+
+            <!-- Role Switcher -->
+            <div class="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-2xl mb-6 border border-slate-200 dark:border-slate-700">
+              <button type="button" id="role-admin-btn" onclick="setLoginRole('admin')" class="flex-1 py-2 font-bold rounded-xl text-xs bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow transition">
+                <i class="fa-solid fa-user-shield mr-1"></i> Admin Portal
+              </button>
+              <button type="button" id="role-crew-btn" onclick="setLoginRole('crew')" class="flex-1 py-2 font-bold rounded-xl text-xs text-slate-500 hover:text-slate-900 dark:hover:text-white transition">
+                <i class="fa-solid fa-users mr-1"></i> Crew Portal
+              </button>
+            </div>
+
+            <form onsubmit="handleUnifiedLogin(event)" class="space-y-4">
+              <div>
+                <label id="identity-label" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">Email Admin</label>
+                <input 
+                  type="text" 
+                  id="login-identity" 
+                  required 
+                  value="manager@email.com"
+                  class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 ${accent.ring} text-slate-800 dark:text-slate-100 text-sm font-medium transition"
+                  placeholder="admin@email.com"
+                >
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2">Password / Sandi</label>
+                <div class="relative">
+                  <input 
+                    type="password" 
+                    id="login-password" 
+                    required 
+                    value="password123"
+                    class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 ${accent.ring} text-slate-800 dark:text-slate-100 text-sm font-medium transition pr-12"
+                    placeholder="••••••••"
+                  >
+                  <button 
+                    type="button" 
+                    onclick="togglePasswordVisibility('login-password', 'login-eye-icon')" 
+                    class="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                  >
+                    <i id="login-eye-icon" class="fa-solid fa-eye text-sm"></i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-slate-400 text-[11px]">Sistem Keamanan Aktif</span>
+                <button type="button" onclick="openForgotPasswordModal()" class="font-bold text-slate-700 dark:text-slate-300 hover:underline">Lupa Password?</button>
+              </div>
+
+              <button 
+                type="submit" 
+                class="w-full py-3.5 ${accent.bg} text-white font-semibold rounded-xl shadow-lg transition active:scale-[0.99] flex items-center justify-center gap-2"
+              >
+                <span>Masuk Portal</span>
+                <i class="fa-solid fa-arrow-right text-xs"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    function handleUnifiedLogin(e) {
+      e.preventDefault();
+      const identity = document.getElementById('login-identity').value.trim();
+      const password = document.getElementById('login-password').value.trim();
+
+      if (currentLoginRole === 'admin') {
+        const foundAdmin = APP_STATE.admins.find(a => a.email.toLowerCase() === identity.toLowerCase());
+        if (foundAdmin) {
+          if (foundAdmin.password === password) {
+            APP_STATE.currentUser = { ...foundAdmin, roleType: 'admin' };
+            APP_STATE.activeTab = 'dashboard';
+            saveData();
+            showToast(`Selamat datang Admin, ${foundAdmin.name}!`, 'success');
+            renderApp();
+          } else {
+            showToast('Password Admin salah!', 'error');
+          }
+        } else {
+          showToast('Email Admin tidak terdaftar!', 'error');
+        }
+      } else {
+        const foundCrew = APP_STATE.crews.find(c => c.crewId.toLowerCase() === identity.toLowerCase() || c.phone === identity);
+        if (foundCrew) {
+          const effectivePass = foundCrew.password || foundCrew.crewId;
+          if (password === effectivePass) {
+            APP_STATE.currentUser = { ...foundCrew, roleType: 'crew' };
+            APP_STATE.activeTab = 'crew_dashboard';
+            saveData();
+            showToast(`Selamat datang Crew, ${foundCrew.name}!`, 'success');
+            renderApp();
+          } else {
+            showToast('Password Crew salah! (Default: ID Crew)', 'error');
+          }
+        } else {
+          showToast('ID Crew / No HP tidak ditemukan!', 'error');
+        }
+      }
+    }
+
+    function handleLogout() {
+      if (APP_STATE.scanner) stopScanner();
+      APP_STATE.currentUser = null;
+      saveData();
+      showToast('Anda telah logout.', 'info');
+      renderApp();
+    }
+
+    function openForgotPasswordModal() {
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <div class="text-center">
+            <div class="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center mx-auto mb-3">
+              <i class="fa-solid fa-key text-lg"></i>
+            </div>
+            <h3 class="font-bold text-lg text-slate-900 dark:text-white">Pemulihan Password</h3>
+            <p class="text-xs text-slate-500 mt-1">Bagi Crew, pengajuan ubah password akan dikirimkan ke Admin untuk disetujui.</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-600 dark:text-slate-300 mb-1">Email / ID Crew / No WA</label>
+              <input type="text" id="recovery-target" placeholder="admin@email.com atau CRW001" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+            </div>
+
+            <button onclick="sendRecoveryRequest()" class="w-full py-3 bg-slate-900 text-white font-bold rounded-xl text-xs transition">
+              Kirim Instruksi Pemulihan
+            </button>
+          </div>
+
+          <button onclick="document.getElementById('dynamic-modal').remove()" class="w-full py-2.5 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs mt-1">Batal</button>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function sendRecoveryRequest() {
+      const target = document.getElementById('recovery-target').value.trim();
+      document.getElementById('dynamic-modal').remove();
+      if (!target) return;
+
+      const crew = APP_STATE.crews.find(c => c.crewId.toLowerCase() === target.toLowerCase() || c.phone === target);
+      if (crew) {
+        APP_STATE.requests.unshift({
+          id: 'req_' + Date.now(),
+          crewId: crew.crewId,
+          crewName: crew.name,
+          type: 'PASSWORD_RESET',
+          description: `Permintaan Reset Password untuk ID ${crew.crewId}`,
+          newValue: crew.crewId, // reset back to default ID
+          status: 'PENDING',
+          date: new Date().toISOString().split('T')[0]
+        });
+        saveData();
+        showToast('Permintaan reset password telah diajukan ke Admin!', 'success');
+      } else {
+        showToast('Kontak/ID terkirim. Admin akan memeriksa log.', 'info');
+      }
+    }
+
+    /* ================= NAVIGATION ================= */
+    function renderNavigation() {
+      const active = APP_STATE.activeTab;
+      const isAdmin = APP_STATE.currentUser.roleType === 'admin';
+      const activeBreaksCount = APP_STATE.breaks.filter(b => b.status === 'ON BREAK').length;
+      const pendingReqsCount = APP_STATE.requests.filter(r => r.status === 'PENDING').length;
+      const accent = getAccentClasses();
+
+      const adminNav = [
+        { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
+        { id: 'scan', label: 'Scan', icon: 'fa-qrcode' },
+        { id: 'active', label: 'Aktif Break', icon: 'fa-clock', badge: activeBreaksCount },
+        { id: 'history', label: 'Riwayat', icon: 'fa-rectangle-list' },
+        { id: 'crews', label: 'Data Crew', icon: 'fa-users' },
+        { id: 'approvals', label: 'Pengajuan', icon: 'fa-circle-check', badge: pendingReqsCount },
+        { id: 'statuses', label: 'Status Feed', icon: 'fa-camera-retro' },
+        { id: 'breakTypes', label: 'Jam Break', icon: 'fa-business-time' },
+        { id: 'admins', label: 'Admin', icon: 'fa-shield-halved' },
+        { id: 'settings', label: 'Pengaturan', icon: 'fa-sliders' },
+      ];
+
+      const crewNav = [
+        { id: 'crew_dashboard', label: 'Beranda Crew', icon: 'fa-house' },
+        { id: 'crew_breaks', label: 'Siapa Break', icon: 'fa-mug-hot', badge: activeBreaksCount },
+        { id: 'crew_requests', label: 'Pengajuan Data', icon: 'fa-pen-to-square' },
+        { id: 'statuses', label: 'Status Feed', icon: 'fa-camera-retro' },
+        { id: 'crew_profile', label: 'Profil & Barcode', icon: 'fa-id-card' },
+      ];
+
+      const navItems = isAdmin ? adminNav : crewNav;
+
+      return `
+        <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-30 shadow-sm">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+              
+              <div class="flex items-center gap-3 cursor-pointer" onclick="switchTab('${isAdmin ? 'dashboard' : 'crew_dashboard'}')">
+                ${APP_STATE.settings.companyLogo ? `
+                  <img src="${APP_STATE.settings.companyLogo}" alt="Logo" class="w-10 h-10 object-cover rounded-xl shadow border border-slate-200 dark:border-slate-700">
+                ` : `
+                  <div class="w-10 h-10 ${accent.bg} rounded-xl flex items-center justify-center text-white shadow">
+                    <i class="fa-solid fa-mug-hot text-base"></i>
+                  </div>
+                `}
+                <div>
+                  <h1 class="font-bold text-slate-900 dark:text-white leading-tight text-sm sm:text-base">${APP_STATE.settings.companyName}</h1>
+                  <p class="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase">${isAdmin ? 'Admin Portal' : 'Crew Portal'}</p>
+                </div>
+              </div>
+
+              <!-- Desktop Nav -->
+              <nav class="hidden lg:flex items-center gap-1 overflow-x-auto py-2">
+                ${navItems.map(item => `
+                  <button 
+                    onclick="switchTab('${item.id}')"
+                    class="px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap ${
+                      active === item.id 
+                        ? `${accent.bg} text-white font-semibold shadow-sm` 
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                    }"
+                  >
+                    <i class="fa-solid ${item.icon}"></i>
+                    <span>${item.label}</span>
+                    ${item.badge ? `<span class="ml-1 px-1.5 py-0.5 text-[9px] bg-rose-600 text-white font-bold rounded-full">${item.badge}</span>` : ''}
+                  </button>
+                `).join('')}
+              </nav>
+
+              <!-- Controls -->
+              <div class="flex items-center gap-2">
+                <button 
+                  onclick="toggleTheme()" 
+                  class="p-2.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition"
+                >
+                  <i class="fa-solid ${APP_STATE.theme === 'dark' ? 'fa-sun text-amber-400' : 'fa-moon'}"></i>
+                </button>
+
+                <div class="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                <div class="text-right hidden sm:block">
+                  <p class="text-xs font-bold text-slate-900 dark:text-white">${APP_STATE.currentUser.name}</p>
+                  <p class="text-[10px] text-slate-400 uppercase">${isAdmin ? 'ADMIN' : APP_STATE.currentUser.crewId}</p>
+                </div>
+
+                <button 
+                  onclick="handleLogout()" 
+                  title="Logout"
+                  class="p-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition"
+                >
+                  <i class="fa-solid fa-right-from-bracket"></i>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </header>
+
+        <!-- Mobile Bottom Nav -->
+        <div class="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 z-40 px-2 py-1 shadow-2xl flex items-center justify-around">
+          ${isAdmin ? `
+            <button onclick="switchTab('dashboard')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'dashboard' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-chart-pie text-base"></i>
+              <span class="text-[9px] mt-0.5">Dash</span>
+            </button>
+            <button onclick="switchTab('active')" class="flex flex-col items-center py-1.5 px-2 rounded-lg relative ${active === 'active' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-clock text-base"></i>
+              <span class="text-[9px] mt-0.5">Aktif</span>
+              ${activeBreaksCount ? `<span class="absolute top-1 right-2 w-2 h-2 bg-rose-600 rounded-full"></span>` : ''}
+            </button>
+            <button onclick="switchTab('scan')" class="-mt-5 w-12 h-12 ${accent.bg} text-white rounded-full flex items-center justify-center shadow-lg border-4 border-slate-50 dark:border-slate-900 transition">
+              <i class="fa-solid fa-qrcode text-lg"></i>
+            </button>
+            <button onclick="switchTab('approvals')" class="flex flex-col items-center py-1.5 px-2 rounded-lg relative ${active === 'approvals' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-circle-check text-base"></i>
+              <span class="text-[9px] mt-0.5">Acc</span>
+              ${pendingReqsCount ? `<span class="absolute top-1 right-2 w-2 h-2 bg-amber-500 rounded-full"></span>` : ''}
+            </button>
+            <button onclick="switchTab('statuses')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'statuses' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-camera-retro text-base"></i>
+              <span class="text-[9px] mt-0.5">Status</span>
+            </button>
+          ` : `
+            <button onclick="switchTab('crew_dashboard')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'crew_dashboard' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-house text-base"></i>
+              <span class="text-[9px] mt-0.5">Home</span>
+            </button>
+            <button onclick="switchTab('crew_breaks')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'crew_breaks' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-mug-hot text-base"></i>
+              <span class="text-[9px] mt-0.5">Siapa Break</span>
+            </button>
+            <button onclick="switchTab('statuses')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'statuses' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-camera-retro text-base"></i>
+              <span class="text-[9px] mt-0.5">Feed</span>
+            </button>
+            <button onclick="switchTab('crew_requests')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'crew_requests' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-pen-to-square text-base"></i>
+              <span class="text-[9px] mt-0.5">Ajukan</span>
+            </button>
+            <button onclick="switchTab('crew_profile')" class="flex flex-col items-center py-1.5 px-2 rounded-lg ${active === 'crew_profile' ? `${accent.text} font-bold` : 'text-slate-500'}">
+              <i class="fa-solid fa-id-card text-base"></i>
+              <span class="text-[9px] mt-0.5">Profil</span>
+            </button>
+          `}
+        </div>
+      `;
+    }
+
+    /* ================= ADMIN VIEWS ================= */
+    function renderDashboardView() {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const totalCrewCount = APP_STATE.crews.filter(c => c.status === 'Active').length;
+      const activeBreaks = APP_STATE.breaks.filter(b => b.status === 'ON BREAK');
+      const todayBreaks = APP_STATE.breaks.filter(b => b.date === todayStr);
+      const pendingReqs = APP_STATE.requests.filter(r => r.status === 'PENDING');
+      const accent = getAccentClasses();
+
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div class="${accent.bg} rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
+            <div class="relative z-10 max-w-2xl">
+              <span class="px-3 py-1 bg-white/10 rounded-full text-xs font-semibold tracking-wide uppercase inline-block mb-3">Admin Portal</span>
+              <h2 class="text-2xl md:text-3xl font-extrabold tracking-tight">${APP_STATE.settings.appTitle}</h2>
+              <p class="mt-2 text-slate-100 text-sm leading-relaxed">${APP_STATE.settings.appDescription}</p>
+              
+              <div class="mt-6 flex flex-wrap gap-3">
+                <button onclick="switchTab('scan')" class="px-6 py-3 bg-white text-slate-900 font-bold rounded-2xl shadow-lg hover:bg-slate-100 transition flex items-center gap-2">
+                  <i class="fa-solid fa-qrcode text-lg"></i>
+                  <span>MULAI SCAN CREW</span>
+                </button>
+                <button onclick="switchTab('approvals')" class="px-5 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-2xl transition flex items-center gap-2">
+                  <i class="fa-solid fa-circle-check"></i>
+                  <span>Pengajuan Pending (${pendingReqs.length})</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div onclick="switchTab('crews')" class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-slate-400 transition">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Total Crew</span>
+              <div class="mt-4 flex items-baseline justify-between">
+                <span class="text-3xl font-extrabold text-slate-900 dark:text-white">${totalCrewCount}</span>
+                <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Kelola <i class="fa-solid fa-arrow-right ml-1"></i></span>
+              </div>
+            </div>
+
+            <div onclick="switchTab('active')" class="bg-white dark:bg-slate-800 p-5 rounded-2xl border ${activeBreaks.length > 0 ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200 dark:border-slate-700'} shadow-sm cursor-pointer transition">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Sedang Break</span>
+              <div class="mt-4 flex items-baseline justify-between">
+                <span class="text-3xl font-extrabold text-slate-900 dark:text-white">${activeBreaks.length}</span>
+                <span class="text-xs font-semibold text-amber-600">Pantau <i class="fa-solid fa-arrow-right ml-1"></i></span>
+              </div>
+            </div>
+
+            <div onclick="switchTab('history')" class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-slate-400 transition">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Break Hari Ini</span>
+              <div class="mt-4 flex items-baseline justify-between">
+                <span class="text-3xl font-extrabold text-slate-900 dark:text-white">${todayBreaks.length}</span>
+                <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Riwayat <i class="fa-solid fa-arrow-right ml-1"></i></span>
+              </div>
+            </div>
+
+            <div onclick="switchTab('approvals')" class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm cursor-pointer hover:border-slate-400 transition">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Pengajuan Acc</span>
+              <div class="mt-4 flex items-baseline justify-between">
+                <span class="text-3xl font-extrabold ${pendingReqs.length > 0 ? 'text-amber-600' : 'text-slate-900 dark:text-white'}">${pendingReqs.length}</span>
+                <span class="text-xs font-semibold text-slate-600 dark:text-slate-400">Periksa <i class="fa-solid fa-arrow-right ml-1"></i></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderScanView() {
+      const accent = getAccentClasses();
+      return `
+        <div class="max-w-xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div class="text-center">
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Scanner Barcode / QR Crew</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Arahkan kamera ke ID Card crew untuk mulai atau selesai break</p>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-4 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-md">
+            <div id="reader" class="overflow-hidden rounded-2xl bg-slate-950 min-h-[280px] relative flex flex-col items-center justify-center text-white">
+              <div id="camera-loading-state" class="text-center px-4 py-8">
+                <div class="w-16 h-16 rounded-full bg-slate-800 text-slate-300 flex items-center justify-center mx-auto mb-3">
+                  <i class="fa-solid fa-camera text-2xl"></i>
+                </div>
+                <p class="text-sm font-bold">Kamera Device Siap</p>
+                <p class="text-xs text-slate-400 mt-1">Klik tombol di bawah untuk mengaktifkan pemindaian</p>
+              </div>
+            </div>
+
+            <div class="mt-4 flex gap-3">
+              <button 
+                onclick="startCameraScanner()" 
+                id="btn-toggle-cam"
+                class="flex-1 py-3 ${accent.bg} text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2"
+              >
+                <i class="fa-solid fa-video"></i>
+                <span id="cam-btn-text">Buka Kamera</span>
+              </button>
+              <button 
+                onclick="openManualInputModal()" 
+                class="py-3 px-4 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition"
+              >
+                <i class="fa-solid fa-keyboard mr-1"></i> Manual ID
+              </button>
+            </div>
+          </div>
+
+          <div id="scan-result-container">
+            ${APP_STATE.activeScanResult ? renderScanResultCard(APP_STATE.activeScanResult) : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function startCameraScanner() {
+      if (APP_STATE.scanner) {
+        stopScanner();
+        return;
+      }
+      const html5QrcodeScanner = new Html5Qrcode("reader");
+      APP_STATE.scanner = html5QrcodeScanner;
+      const btnText = document.getElementById('cam-btn-text');
+      if (btnText) btnText.innerText = 'Matikan Kamera';
+
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          if (navigator.vibrate) navigator.vibrate(100);
+          processScanBarcode(decodedText);
+          stopScanner();
+        },
+        () => {}
+      ).catch(() => {
+        showToast("Gagal mengakses kamera. Gunakan input ID manual.", "error");
+        if (btnText) btnText.innerText = 'Buka Kamera';
+        APP_STATE.scanner = null;
+      });
+    }
+
+    function stopScanner() {
+      if (APP_STATE.scanner) {
+        APP_STATE.scanner.stop().then(() => {
+          APP_STATE.scanner = null;
+          const btnText = document.getElementById('cam-btn-text');
+          if (btnText) btnText.innerText = 'Buka Kamera';
+        }).catch(() => {});
+      }
+    }
+
+    function renderScanResultCard(crew) {
+      if (!crew) return '';
+      const activeBreak = APP_STATE.breaks.find(b => b.crewId === crew.crewId && b.status === 'ON BREAK');
+      const accent = getAccentClasses();
+
+      if (activeBreak) {
+        return `
+          <div class="bg-amber-50 dark:bg-amber-950/40 rounded-3xl border-2 border-amber-300 p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-amber-200 pb-3">
+              <div class="flex items-center gap-3">
+                ${crew.photo ? `<img src="${crew.photo}" class="w-12 h-12 object-cover rounded-xl">` : `
+                <div class="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold">
+                  <i class="fa-solid fa-mug-hot"></i>
+                </div>`}
+                <div>
+                  <span class="px-2 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-bold rounded-md uppercase">Sedang Break</span>
+                  <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">${crew.name}</h3>
+                  <p class="text-xs text-slate-600 dark:text-slate-300">${crew.position} (${crew.crewId})</p>
+                </div>
+              </div>
+              <button onclick="clearScanResult()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <button onclick="executeEndBreak('${activeBreak.id}')" class="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-2xl shadow-lg transition">
+              SELESAIKAN BREAK (END BREAK)
+            </button>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="bg-white dark:bg-slate-800 rounded-3xl border-2 border-slate-300 dark:border-slate-700 p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
+              <div class="flex items-center gap-3">
+                ${crew.photo ? `<img src="${crew.photo}" class="w-12 h-12 object-cover rounded-xl">` : `
+                <div class="w-12 h-12 rounded-xl ${accent.bg} text-white flex items-center justify-center font-bold">
+                  <i class="fa-solid fa-user"></i>
+                </div>`}
+                <div>
+                  <span class="px-2 py-0.5 bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-[10px] font-bold rounded-md uppercase">Siap Break</span>
+                  <h3 class="text-lg font-extrabold text-slate-900 dark:text-white">${crew.name}</h3>
+                  <p class="text-xs text-slate-500">${crew.position} (${crew.crewId})</p>
+                </div>
+              </div>
+              <button onclick="clearScanResult()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-700 dark:text-slate-300 mb-2">Pilih Jenis Break:</label>
+              <div class="grid grid-cols-2 gap-2">
+                ${APP_STATE.breakTypes.map((bt, i) => `
+                  <label class="cursor-pointer border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 p-3 rounded-xl flex flex-col hover:border-slate-900 transition">
+                    <div class="flex items-center justify-between">
+                      <span class="font-bold text-xs text-slate-900 dark:text-white">${bt.name}</span>
+                      <input type="radio" name="selected_bt" value="${bt.name}" data-max="${bt.maxMinutes}" ${i===0?'checked':''} class="text-slate-900">
+                    </div>
+                    <span class="text-[11px] text-slate-500 mt-1">Maks: ${bt.maxMinutes} menit</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+
+            <button onclick="executeStartBreak('${crew.crewId}')" class="w-full py-4 ${accent.bg} text-white font-bold rounded-2xl shadow-lg transition">
+              MULAI BREAK (START BREAK)
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    function processScanBarcode(code) {
+      const cleanCode = code.trim();
+      const crew = APP_STATE.crews.find(c => c.crewId.toLowerCase() === cleanCode.toLowerCase() || c.id === cleanCode);
+      if (crew) {
+        APP_STATE.activeScanResult = crew;
+        showToast(`Crew ${crew.name} terdeteksi!`, 'success');
+        renderApp();
+      } else {
+        showToast(`Barcode / ID "${cleanCode}" tidak ditemukan.`, 'error');
+      }
+    }
+
+    function clearScanResult() {
+      APP_STATE.activeScanResult = null;
+      renderApp();
+    }
+
+    function executeStartBreak(crewId) {
+      const crew = APP_STATE.crews.find(c => c.crewId === crewId);
+      if (!crew) return;
+
+      const checkedRadio = document.querySelector('input[name="selected_bt"]:checked');
+      const breakTypeName = checkedRadio ? checkedRadio.value : 'Meal Break';
+      const maxMins = checkedRadio ? parseInt(checkedRadio.getAttribute('data-max')) : 45;
+
+      const newBreak = {
+        id: 'brk_' + Date.now(),
+        crewId: crew.crewId,
+        crewName: crew.name,
+        position: crew.position,
+        breakType: breakTypeName,
+        maxMinutes: maxMins,
+        startTime: new Date().toISOString(),
+        endTime: null,
+        durationSeconds: null,
+        startedBy: APP_STATE.currentUser.email || APP_STATE.currentUser.crewId,
+        endedBy: null,
+        status: 'ON BREAK',
+        date: new Date().toISOString().split('T')[0]
+      };
+
+      APP_STATE.breaks.unshift(newBreak);
+      saveData();
+      showToast(`Break dimulai untuk ${crew.name} (${breakTypeName})`, 'success');
+      APP_STATE.activeScanResult = null;
+      renderApp();
+    }
+
+    function executeEndBreak(breakId) {
+      const b = APP_STATE.breaks.find(item => item.id === breakId);
+      if (!b) return;
+
+      const nowIso = new Date().toISOString();
+      const startMs = new Date(b.startTime).getTime();
+      const endMs = new Date(nowIso).getTime();
+      const durationSec = Math.max(1, Math.floor((endMs - startMs) / 1000));
+
+      b.endTime = nowIso;
+      b.durationSeconds = durationSec;
+      b.status = 'COMPLETED';
+      b.endedBy = APP_STATE.currentUser.email || APP_STATE.currentUser.crewId;
+
+      saveData();
+      showToast(`Break selesai untuk ${b.crewName} (${formatDuration(durationSec)})`, 'success');
+      APP_STATE.activeScanResult = null;
+      renderApp();
+    }
+
+    function renderActiveView() {
+      const activeBreaks = APP_STATE.breaks.filter(b => b.status === 'ON BREAK');
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Sesi Break Aktif</h2>
+            <p class="text-sm text-slate-500">Daftar crew yang sedang beristirahat saat ini</p>
+          </div>
+
+          ${activeBreaks.length === 0 ? `
+            <div class="bg-white dark:bg-slate-800 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-700">
+              <i class="fa-solid fa-mug-hot text-4xl text-slate-300 mb-3"></i>
+              <h3 class="font-bold text-slate-800 dark:text-slate-200 text-base">Tidak ada sesi aktif</h3>
+            </div>
+          ` : `
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              ${activeBreaks.map(b => {
+                const elapsed = getElapsedTimeInSeconds(b.startTime);
+                const limitSec = (b.maxMinutes || 30) * 60;
+                const isOver = elapsed > limitSec;
+                return `
+                  <div class="bg-white dark:bg-slate-800 rounded-2xl border ${isOver ? 'border-rose-400 bg-rose-50/20' : 'border-slate-200 dark:border-slate-700'} p-5 shadow-sm flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-center justify-between mb-3">
+                        <span class="px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase ${isOver ? 'bg-rose-200 text-rose-900' : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'}">${b.breakType}</span>
+                        <span class="text-xs text-slate-500">${formatTime(b.startTime)}</span>
+                      </div>
+                      <h3 class="font-bold text-slate-900 dark:text-white text-base">${b.crewName}</h3>
+                      <p class="text-xs text-slate-500">${b.position} • ID: ${b.crewId}</p>
+                    </div>
+
+                    <div class="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <div>
+                        <span class="text-[10px] uppercase font-bold text-slate-400">Durasi Berjalan</span>
+                        <div class="text-xl font-mono font-extrabold ${isOver ? 'text-rose-600' : 'text-slate-900 dark:text-white'} live-timer" data-start="${b.startTime}">00:00</div>
+                      </div>
+                      <button onclick="executeEndBreak('${b.id}')" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition">
+                        Selesaikan
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderHistoryView() {
+      const filtered = APP_STATE.breaks.filter(b => {
+        if (APP_STATE.historyFilters.date && b.date !== APP_STATE.historyFilters.date) return false;
+        if (APP_STATE.historyFilters.breakType && b.breakType !== APP_STATE.historyFilters.breakType) return false;
+        if (APP_STATE.historyFilters.status && b.status !== APP_STATE.historyFilters.status) return false;
+        return true;
+      });
+      const accent = getAccentClasses();
+
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Riwayat Break</h2>
+              <p class="text-sm text-slate-500">Log lengkap seluruh sesi istirahat crew</p>
+            </div>
+            <button onclick="exportHistoryExcel()" class="px-4 py-2.5 ${accent.bg} text-white font-bold rounded-xl text-xs transition flex items-center gap-2">
+              <i class="fa-solid fa-file-excel"></i> Export Excel (.xlsx)
+            </button>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Tanggal</label>
+              <input type="date" onchange="APP_STATE.historyFilters.date=this.value; renderApp();" value="${APP_STATE.historyFilters.date}" class="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Jenis Break</label>
+              <select onchange="APP_STATE.historyFilters.breakType=this.value; renderApp();" class="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                <option value="">Semua Jenis</option>
+                ${APP_STATE.breakTypes.map(bt => `<option value="${bt.name}" ${APP_STATE.historyFilters.breakType===bt.name?'selected':''}>${bt.name}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Status</label>
+              <select onchange="APP_STATE.historyFilters.status=this.value; renderApp();" class="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                <option value="">Semua Status</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="ON BREAK">On Break</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-50 dark:bg-slate-900/60 text-slate-500 uppercase font-bold border-b border-slate-200 dark:border-slate-700">
+                    <th class="p-4">Tanggal & Waktu</th>
+                    <th class="p-4">Crew</th>
+                    <th class="p-4">Jenis Break</th>
+                    <th class="p-4">Mulai</th>
+                    <th class="p-4">Selesai</th>
+                    <th class="p-4">Durasi</th>
+                    <th class="p-4">Status</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                  ${filtered.length === 0 ? `
+                    <tr><td colspan="7" class="p-8 text-center text-slate-400">Tidak ada data riwayat</td></tr>
+                  ` : filtered.map(b => `
+                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-700/30">
+                      <td class="p-4 font-medium">${b.date}</td>
+                      <td class="p-4 font-bold text-slate-900 dark:text-white">${b.crewName} <span class="text-[10px] text-slate-400 font-normal">(${b.crewId})</span></td>
+                      <td class="p-4"><span class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[10px]">${b.breakType}</span></td>
+                      <td class="p-4 font-mono">${formatTime(b.startTime)}</td>
+                      <td class="p-4 font-mono">${formatTime(b.endTime)}</td>
+                      <td class="p-4 font-mono font-bold">${formatDuration(b.durationSeconds)}</td>
+                      <td class="p-4">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${b.status==='COMPLETED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-800'}">${b.status}</span>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCrewsView() {
+      const q = APP_STATE.searchQuery.toLowerCase();
+      const filtered = APP_STATE.crews.filter(c => c.name.toLowerCase().includes(q) || c.crewId.toLowerCase().includes(q) || c.position.toLowerCase().includes(q));
+      const accent = getAccentClasses();
+
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Database Crew</h2>
+              <p class="text-sm text-slate-500">Kelola data anggota crew, foto, sandi, dan barcode</p>
+            </div>
+            <button onclick="openAddCrewModal()" class="px-4 py-2.5 ${accent.bg} text-white font-bold rounded-xl text-xs transition flex items-center gap-2">
+              <i class="fa-solid fa-user-plus"></i> Tambah Crew Baru
+            </button>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+            <i class="fa-solid fa-magnifying-glass text-slate-400 ml-2"></i>
+            <input 
+              type="text" 
+              oninput="APP_STATE.searchQuery=this.value; renderApp();" 
+              value="${APP_STATE.searchQuery}" 
+              placeholder="Cari nama crew, ID, atau posisi..." 
+              class="w-full bg-transparent border-none focus:outline-none text-xs text-slate-800 dark:text-slate-100 font-medium"
+            >
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${filtered.length === 0 ? `
+              <div class="col-span-full py-12 text-center text-slate-400 bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700">
+                Tidak ada crew ditemukan
+              </div>
+            ` : filtered.map(c => `
+              <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
+                <div class="flex items-start gap-4">
+                  ${c.photo ? `
+                    <img src="${c.photo}" alt="${c.name}" class="w-14 h-14 object-cover rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  ` : `
+                    <div class="w-14 h-14 rounded-2xl ${accent.bg} text-white font-bold flex items-center justify-center text-lg">
+                      ${c.name.substring(0, 2).toUpperCase()}
+                    </div>
+                  `}
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between">
+                      <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono">${c.crewId}</span>
+                      <span class="text-[10px] font-semibold text-emerald-600">${c.status}</span>
+                    </div>
+                    <h3 class="font-bold text-slate-900 dark:text-white text-base truncate mt-1">${c.name}</h3>
+                    <p class="text-xs text-slate-500 truncate">${c.position} • ${c.department}</p>
+                    <p class="text-[10px] text-slate-400 mt-1">Pass: <span class="font-mono font-bold text-slate-600 dark:text-slate-300">${c.password || c.crewId}</span></p>
+                  </div>
+                </div>
+
+                <div class="mt-5 pt-4 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
+                  <button onclick="openBarcodeModal('${c.crewId}')" class="flex-1 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-barcode"></i> Barcode
+                  </button>
+                  <button onclick="openEditCrewModal('${c.id}')" class="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition">
+                    <i class="fa-solid fa-pen"></i>
+                  </button>
+                  <button onclick="deleteCrew('${c.id}')" class="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-600 font-bold rounded-xl text-xs transition">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    /* APPROVALS / PENGAJUAN (ADMIN) */
+    function renderApprovalsView() {
+      const pending = APP_STATE.requests.filter(r => r.status === 'PENDING');
+      const completed = APP_STATE.requests.filter(r => r.status !== 'PENDING');
+
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Persetujuan Pengajuan Crew</h2>
+            <p class="text-sm text-slate-500">Periksa pengajuan perbaikan data atau ubah kata sandi dari crew</p>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Pengajuan Menunggu Persetujuan (${pending.length})</h3>
+
+            ${pending.length === 0 ? `
+              <div class="p-8 text-center text-slate-400 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
+                Tidak ada pengajuan pending
+              </div>
+            ` : `
+              <div class="space-y-3">
+                ${pending.map(r => `
+                  <div class="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <div class="flex items-center gap-2 mb-1">
+                        <span class="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-bold rounded uppercase">${r.type || 'PERUBAHAN DATA'}</span>
+                        <span class="text-xs text-slate-400 font-mono">${r.date}</span>
+                      </div>
+                      <h4 class="font-bold text-slate-900 dark:text-white text-sm">${r.crewName} (${r.crewId})</h4>
+                      <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${r.description || 'Pengajuan perbaikan profil'}</p>
+                      
+                      ${r.photo ? `
+                        <div class="mt-2">
+                          <img src="${r.photo}" class="w-16 h-16 object-cover rounded-xl border">
+                        </div>
+                      ` : ''}
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                      <button onclick="approveRequest('${r.id}')" class="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition">
+                        ACC / Setujui
+                      </button>
+                      <button onclick="rejectRequest('${r.id}')" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition">
+                        Tolak
+                      </button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+
+          <!-- Completed log -->
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Riwayat Pengajuan</h3>
+            <div class="space-y-2">
+              ${completed.length === 0 ? `
+                <p class="text-xs text-slate-400 text-center py-4">Belum ada riwayat pengajuan</p>
+              ` : completed.map(r => `
+                <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-900 text-xs">
+                  <div>
+                    <span class="font-bold">${r.crewName}</span> - <span class="text-slate-500">${r.description}</span>
+                  </div>
+                  <span class="px-2 py-0.5 font-bold rounded text-[10px] ${r.status==='APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">${r.status}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function approveRequest(reqId) {
+      const req = APP_STATE.requests.find(r => r.id === reqId);
+      if (!req) return;
+
+      req.status = 'APPROVED';
+      const crew = APP_STATE.crews.find(c => c.crewId === req.crewId);
+
+      if (crew) {
+        if (req.type === 'PASSWORD_RESET' || req.field === 'password') {
+          crew.password = req.newValue || crew.crewId;
+        } else if (req.field === 'name') crew.name = req.newValue;
+        else if (req.field === 'position') crew.position = req.newValue;
+        else if (req.field === 'department') crew.department = req.newValue;
+        else if (req.field === 'phone') crew.phone = req.newValue;
+        else if (req.field === 'photo') crew.photo = req.photo || req.newValue;
+      }
+
+      saveData();
+      showToast(`Pengajuan ${req.crewName} telah DI-ACC! Data tersimpan permanent.`, 'success');
+      renderApp();
+    }
+
+    function rejectRequest(reqId) {
+      const req = APP_STATE.requests.find(r => r.id === reqId);
+      if (!req) return;
+
+      req.status = 'REJECTED';
+      saveData();
+      showToast(`Pengajuan ${req.crewName} ditolak.`, 'info');
+      renderApp();
+    }
+
+    /* STATUS FEED WITH PHOTO (PUBLIC TO ALL) */
+    function renderStatusesView() {
+      const accent = getAccentClasses();
+      return `
+        <div class="max-w-2xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Status & Galeri foto Crew</h2>
+            <p class="text-sm text-slate-500">Berbagi foto kegiatan, kabar shift, dan informasi publik untuk semua orang</p>
+          </div>
+
+          <!-- Create Status Form -->
+          <form onsubmit="handlePostStatus(event)" class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white">Buat Status Baru</h3>
+            <textarea id="status-text" required rows="2" placeholder="Tulis kabar atau pesan shift kamu..." class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:outline-none focus:ring-2 ${accent.ring}"></textarea>
+            
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Lampirkan Foto (Opsional)</label>
+              <input type="file" id="status-photo-file" accept="image/*" onchange="previewStatusPhoto(event)" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white">
+              <div id="status-photo-preview-box" class="mt-2 hidden">
+                <img id="status-photo-preview" class="w-24 h-24 object-cover rounded-xl border shadow-sm">
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-3 ${accent.bg} text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2">
+              <i class="fa-solid fa-paper-plane"></i> Posting Status
+            </button>
+          </form>
+
+          <!-- Feed -->
+          <div class="space-y-4">
+            ${APP_STATE.statuses.length === 0 ? `
+              <div class="text-center py-8 text-slate-400 bg-white dark:bg-slate-800 rounded-3xl border">Belum ada status terbaru.</div>
+            ` : APP_STATE.statuses.map(s => `
+              <div class="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full ${accent.bg} text-white flex items-center justify-center font-bold text-xs">
+                      ${s.authorName.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <h4 class="font-bold text-slate-900 dark:text-white text-sm">${s.authorName}</h4>
+                      <span class="text-[10px] text-slate-400">${new Date(s.createdAt).toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="text-xs text-slate-700 dark:text-slate-200 leading-relaxed">${s.text}</p>
+
+                ${s.photo ? `
+                  <div class="rounded-2xl overflow-hidden border border-slate-100 dark:border-slate-700 max-h-80 bg-slate-950 flex items-center justify-center">
+                    <img src="${s.photo}" class="w-full h-auto max-h-80 object-cover">
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    let tempStatusPhotoBase64 = '';
+    function previewStatusPhoto(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          tempStatusPhotoBase64 = evt.target.result;
+          const box = document.getElementById('status-photo-preview-box');
+          const img = document.getElementById('status-photo-preview');
+          if (box && img) {
+            img.src = tempStatusPhotoBase64;
+            box.classList.remove('hidden');
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function handlePostStatus(e) {
+      e.preventDefault();
+      const text = document.getElementById('status-text').value.trim();
+      if (!text) return;
+
+      const newPost = {
+        id: 'st_' + Date.now(),
+        authorName: APP_STATE.currentUser.name,
+        authorRole: APP_STATE.currentUser.roleType,
+        text,
+        photo: tempStatusPhotoBase64,
+        createdAt: new Date().toISOString()
+      };
+
+      APP_STATE.statuses.unshift(newPost);
+      saveData();
+      tempStatusPhotoBase64 = '';
+      showToast('Status berhasil dipublikasikan!', 'success');
+      renderApp();
+    }
+
+    /* ================= CREW PORTAL VIEWS ================= */
+    function renderCrewDashboardView() {
+      const crew = APP_STATE.currentUser;
+      const activeBreak = APP_STATE.breaks.find(b => b.crewId === crew.crewId && b.status === 'ON BREAK');
+      const allActiveBreaks = APP_STATE.breaks.filter(b => b.status === 'ON BREAK');
+      const accent = getAccentClasses();
+
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <!-- Welcome Banner -->
+          <div class="${accent.bg} rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
+            <span class="px-3 py-1 bg-white/10 rounded-full text-xs font-semibold tracking-wide uppercase inline-block mb-3">Portal Crew</span>
+            <h2 class="text-2xl font-extrabold">Halo, ${crew.name}!</h2>
+            <p class="text-xs text-slate-100 mt-1">${crew.position} (${crew.crewId}) • ${crew.department}</p>
+
+            <div class="mt-6 flex flex-wrap gap-3">
+              ${activeBreak ? `
+                <div class="p-4 bg-amber-500 text-slate-900 rounded-2xl font-bold text-xs flex items-center gap-3">
+                  <i class="fa-solid fa-clock text-lg"></i>
+                  <div>
+                    <p>Status: Sedang Break (${activeBreak.breakType})</p>
+                    <p class="text-[10px] font-mono">Mulai: ${formatTime(activeBreak.startTime)}</p>
+                  </div>
+                </div>
+              ` : `
+                <div class="p-4 bg-emerald-500 text-white rounded-2xl font-bold text-xs flex items-center gap-2">
+                  <i class="fa-solid fa-circle-check text-base"></i>
+                  <span>Status Anda: On Duty / Tidak Sedang Break</span>
+                </div>
+              `}
+            </div>
+          </div>
+
+          <!-- Who's on break preview -->
+          <div class="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold text-slate-900 dark:text-white text-sm">Rekan Crew Sedang Break Saat Ini (${allActiveBreaks.length})</h3>
+              <button onclick="switchTab('crew_breaks')" class="text-xs font-bold ${accent.text}">Lihat Semua</button>
+            </div>
+
+            ${allActiveBreaks.length === 0 ? `
+              <p class="text-xs text-slate-400 text-center py-6">Semua crew sedang berada di tempat tugas.</p>
+            ` : `
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                ${allActiveBreaks.map(b => `
+                  <div class="p-3 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                    <div>
+                      <h4 class="font-bold text-xs text-slate-900 dark:text-white">${b.crewName}</h4>
+                      <p class="text-[10px] text-slate-500">${b.breakType} • ${formatTime(b.startTime)}</p>
+                    </div>
+                    <span class="text-xs font-mono font-bold text-amber-600 live-timer" data-start="${b.startTime}">00:00</span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="grid grid-cols-2 gap-4">
+            <button onclick="switchTab('crew_requests')" class="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-left hover:border-slate-400 transition">
+              <i class="fa-solid fa-pen-to-square text-xl ${accent.text} mb-2"></i>
+              <h4 class="font-bold text-xs text-slate-900 dark:text-white">Pengajuan Data</h4>
+              <p class="text-[10px] text-slate-500 mt-1">Minta perbaikan data ke Admin</p>
+            </button>
+
+            <button onclick="switchTab('crew_profile')" class="p-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-left hover:border-slate-400 transition">
+              <i class="fa-solid fa-qrcode text-xl ${accent.text} mb-2"></i>
+              <h4 class="font-bold text-xs text-slate-900 dark:text-white">Barcode Saya</h4>
+              <p class="text-[10px] text-slate-500 mt-1">Tunjukkan ke Admin untuk scan</p>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderCrewBreaksView() {
+      const activeBreaks = APP_STATE.breaks.filter(b => b.status === 'ON BREAK');
+      return `
+        <div class="space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Daftar Rekan Sedang Break</h2>
+            <p class="text-sm text-slate-500">Monitor waktu istirahat rekan kerja secara real-time</p>
+          </div>
+
+          ${activeBreaks.length === 0 ? `
+            <div class="bg-white dark:bg-slate-800 rounded-3xl p-12 text-center border">
+              <i class="fa-solid fa-mug-hot text-4xl text-slate-300 mb-3"></i>
+              <h3 class="font-bold text-slate-800 dark:text-slate-200 text-sm">Tidak ada crew yang sedang break saat ini</h3>
+            </div>
+          ` : `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${activeBreaks.map(b => `
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+                  <div>
+                    <span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-[10px] font-bold rounded uppercase">${b.breakType}</span>
+                    <h3 class="font-bold text-slate-900 dark:text-white text-sm mt-1">${b.crewName}</h3>
+                    <p class="text-xs text-slate-500">${b.position} • Mulai: ${formatTime(b.startTime)}</p>
+                  </div>
+                  <div class="text-right">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Durasi</span>
+                    <span class="text-base font-mono font-bold text-amber-600 live-timer" data-start="${b.startTime}">00:00</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function renderCrewRequestsView() {
+      const crew = APP_STATE.currentUser;
+      const myRequests = APP_STATE.requests.filter(r => r.crewId === crew.crewId);
+      const accent = getAccentClasses();
+
+      return `
+        <div class="max-w-xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Pengajuan Perubahan Data</h2>
+            <p class="text-sm text-slate-500">Kirimkan permohonan ubah profil/sandi ke Admin. Data akan terupdate setelah di-ACC oleh Admin.</p>
+          </div>
+
+          <form onsubmit="handleCrewSubmitRequest(event)" class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Formulir Pengajuan Baru</h3>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Bidang yang ingin diubah</label>
+              <select id="req-field" onchange="toggleReqFieldInputs()" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium">
+                <option value="password">Kata Sandi / Password Portal</option>
+                <option value="name">Nama Lengkap</option>
+                <option value="phone">Nomor WhatsApp / HP</option>
+                <option value="position">Posisi / Jabatan</option>
+                <option value="photo">Foto Profil</option>
+              </select>
+            </div>
+
+            <div id="req-value-box">
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Data / Value Baru</label>
+              <input type="text" id="req-new-value" required placeholder="Masukkan data baru..." class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium">
+            </div>
+
+            <div id="req-photo-box" class="hidden">
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Upload Foto Baru</label>
+              <input type="file" id="req-photo-file" accept="image/*" onchange="previewReqPhoto(event)" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Catatan / Alasan Pengajuan</label>
+              <textarea id="req-desc" rows="2" placeholder="Jelaskan alasan permohonan ubah data..." class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium"></textarea>
+            </div>
+
+            <button type="submit" class="w-full py-3.5 ${accent.bg} text-white font-bold rounded-xl text-xs transition">
+              Kirim Pengajuan ke Admin
+            </button>
+          </form>
+
+          <!-- Request History -->
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Status Pengajuan Anda</h3>
+
+            ${myRequests.length === 0 ? `
+              <p class="text-xs text-slate-400 text-center py-4">Belum ada riwayat pengajuan</p>
+            ` : `
+              <div class="space-y-3">
+                ${myRequests.map(r => `
+                  <div class="p-4 rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 flex items-center justify-between">
+                    <div>
+                      <span class="text-[10px] text-slate-400 font-mono block">${r.date}</span>
+                      <h4 class="font-bold text-xs text-slate-900 dark:text-white mt-0.5">${r.description}</h4>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                      r.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' :
+                      r.status === 'REJECTED' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                    }">${r.status}</span>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    let tempReqPhotoBase64 = '';
+    function previewReqPhoto(e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+          tempReqPhotoBase64 = evt.evt.result || evt.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function toggleReqFieldInputs() {
+      const field = document.getElementById('req-field').value;
+      const valBox = document.getElementById('req-value-box');
+      const photoBox = document.getElementById('req-photo-box');
+
+      if (field === 'photo') {
+        valBox.classList.add('hidden');
+        photoBox.classList.remove('hidden');
+      } else {
+        valBox.classList.remove('hidden');
+        photoBox.classList.add('hidden');
+      }
+    }
+
+    function handleCrewSubmitRequest(e) {
+      e.preventDefault();
+      const crew = APP_STATE.currentUser;
+      const field = document.getElementById('req-field').value;
+      const newValue = document.getElementById('req-new-value').value.trim();
+      const desc = document.getElementById('req-desc').value.trim();
+
+      const newReq = {
+        id: 'req_' + Date.now(),
+        crewId: crew.crewId,
+        crewName: crew.name,
+        type: 'PERUBAHAN DATA',
+        field,
+        newValue: field === 'photo' ? '' : newValue,
+        photo: field === 'photo' ? tempReqPhotoBase64 : '',
+        description: desc || `Permintaan ubah ${field} menjadi: ${newValue}`,
+        status: 'PENDING',
+        date: new Date().toISOString().split('T')[0]
+      };
+
+      APP_STATE.requests.unshift(newReq);
+      saveData();
+      tempReqPhotoBase64 = '';
+      showToast('Pengajuan berhasil dikirim! Menunggu ACC Admin.', 'success');
+      renderApp();
+    }
+
+    function renderCrewProfileView() {
+      const crew = APP_STATE.currentUser;
+      const accent = getAccentClasses();
+
+      return `
+        <div class="max-w-md mx-auto space-y-6 pb-24 lg:pb-8">
+          <div class="bg-white dark:bg-slate-800 rounded-3xl border border-slate-200 dark:border-slate-700 p-6 shadow-xl text-center space-y-4">
+            <div class="relative w-24 h-24 mx-auto">
+              ${crew.photo ? `
+                <img src="${crew.photo}" class="w-24 h-24 object-cover rounded-full border-4 border-slate-100 dark:border-slate-700 shadow">
+              ` : `
+                <div class="w-24 h-24 rounded-full ${accent.bg} text-white flex items-center justify-center font-bold text-2xl shadow">
+                  ${crew.name.substring(0, 2).toUpperCase()}
+                </div>
+              `}
+            </div>
+
+            <div>
+              <h2 class="text-xl font-bold text-slate-900 dark:text-white">${crew.name}</h2>
+              <p class="text-xs text-slate-500">${crew.position} • ${crew.department}</p>
+              <span class="inline-block mt-2 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-mono font-bold rounded-lg">${crew.crewId}</span>
+            </div>
+
+            <div class="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center">
+              <div id="crew-self-qrcode-box" class="w-48 h-48 flex items-center justify-center"></div>
+              <p class="mt-2 text-xs font-mono font-bold text-slate-600 dark:text-slate-400">Scan barcode ini di portal Admin</p>
+            </div>
+
+            <button onclick="downloadCrewBarcode('${crew.crewId}')" class="w-full py-3 ${accent.bg} text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2">
+              <i class="fa-solid fa-download"></i> Unduh / Download Barcode ID
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function downloadCrewBarcode(crewId) {
+      const box = document.getElementById('crew-self-qrcode-box');
+      const img = box ? box.querySelector('img') : null;
+      if (img && img.src) {
+        const a = document.createElement('a');
+        a.href = img.src;
+        a.download = `Barcode_${crewId}.png`;
+        a.click();
+        showToast('Barcode berhasil diunduh!', 'success');
+      } else {
+        showToast('Gagal mengunduh barcode. Coba lagi.', 'error');
+      }
+    }
+
+    /* ================= OTHER ADMIN VIEWS ================= */
+    function renderBreakTypesView() {
+      const accent = getAccentClasses();
+      return `
+        <div class="max-w-2xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Kustomisasi Durasi & Jam Break</h2>
+            <p class="text-sm text-slate-500">Atur jenis istirahat dan durasi batas maksimal (menit)</p>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div class="space-y-3">
+              ${APP_STATE.breakTypes.map(bt => `
+                <div class="flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                  <div>
+                    <h4 class="font-bold text-slate-900 dark:text-white text-sm">${bt.name}</h4>
+                    <p class="text-xs text-slate-500">Maksimal: <span class="font-bold text-slate-700 dark:text-slate-300">${bt.maxMinutes} Menit</span></p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button onclick="openEditBreakTypeModal('${bt.id}')" class="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-200 rounded-xl transition">
+                      <i class="fa-solid fa-pen text-xs"></i>
+                    </button>
+                    ${APP_STATE.breakTypes.length > 1 ? `
+                      <button onclick="deleteBreakType('${bt.id}')" class="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition">
+                        <i class="fa-solid fa-trash text-xs"></i>
+                      </button>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+
+            <form onsubmit="handleAddBreakType(event)" class="mt-6 pt-6 border-t border-slate-100 dark:border-slate-700 space-y-3">
+              <h3 class="font-bold text-sm text-slate-900 dark:text-white">Tambah Jenis Break Baru</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input type="text" id="new-bt-name" required placeholder="Nama Break (misal: Coffee Break)" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                <input type="number" id="new-bt-max" required min="1" value="15" placeholder="Durasi Maksimal (Menit)" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+              </div>
+              <button type="submit" class="w-full py-3 ${accent.bg} text-white font-bold rounded-xl text-xs transition">Simpan Jenis Break</button>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    function handleAddBreakType(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-bt-name').value.trim();
+      const maxMinutes = parseInt(document.getElementById('new-bt-max').value);
+      if (!name || isNaN(maxMinutes)) return;
+
+      APP_STATE.breakTypes.push({ id: 'bt_' + Date.now(), name, maxMinutes });
+      saveData();
+      showToast('Jenis break baru berhasil ditambahkan!', 'success');
+      renderApp();
+    }
+
+    function openEditBreakTypeModal(id) {
+      const bt = APP_STATE.breakTypes.find(item => item.id === id);
+      if (!bt) return;
+
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <h3 class="font-bold text-lg text-slate-900 dark:text-white">Edit Jam Break</h3>
+          <input type="text" id="edit-bt-name" value="${bt.name}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+          <input type="number" id="edit-bt-max" value="${bt.maxMinutes}" min="1" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+          <div class="flex gap-2 pt-2">
+            <button onclick="saveEditBreakType('${bt.id}')" class="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">Simpan</button>
+            <button onclick="document.getElementById('dynamic-modal').remove()" class="py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Batal</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function saveEditBreakType(id) {
+      const bt = APP_STATE.breakTypes.find(item => item.id === id);
+      if (bt) {
+        bt.name = document.getElementById('edit-bt-name').value.trim();
+        bt.maxMinutes = parseInt(document.getElementById('edit-bt-max').value);
+        saveData();
+        document.getElementById('dynamic-modal').remove();
+        showToast('Jenis break diperbarui!', 'success');
+        renderApp();
+      }
+    }
+
+    function deleteBreakType(id) {
+      if (APP_STATE.breakTypes.length <= 1) return showToast('Minimal harus ada 1 jenis break!', 'error');
+      APP_STATE.breakTypes = APP_STATE.breakTypes.filter(bt => bt.id !== id);
+      saveData();
+      showToast('Jenis break dihapus.', 'info');
+      renderApp();
+    }
+
+    function renderAdminsView() {
+      const accent = getAccentClasses();
+      return `
+        <div class="max-w-2xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Kelola Admin (Maksimal 5 Admin)</h2>
+            <p class="text-sm text-slate-500">Daftar admin pengelola aplikasi</p>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <span class="text-xs font-bold uppercase text-slate-500">Total Admin Terdaftar</span>
+              <span class="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700 font-bold text-xs">${APP_STATE.admins.length} / 5</span>
+            </div>
+
+            <div class="space-y-3">
+              ${APP_STATE.admins.map(adm => `
+                <div class="flex items-center justify-between p-4 rounded-2xl border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40">
+                  <div>
+                    <h4 class="font-bold text-slate-900 dark:text-white text-sm">${adm.name}</h4>
+                    <p class="text-xs text-slate-500">${adm.email} • WA: ${adm.phone || '-'}</p>
+                  </div>
+                  ${APP_STATE.admins.length > 1 ? `
+                    <button onclick="removeAdmin('${adm.id}')" class="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+
+            ${APP_STATE.admins.length < 5 ? `
+              <form onsubmit="handleAddAdmin(event)" class="mt-6 pt-6 border-t space-y-3">
+                <h3 class="font-bold text-sm text-slate-900 dark:text-white">Tambah Admin Baru</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input type="text" id="new-adm-name" required placeholder="Nama Admin" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                  <input type="email" id="new-adm-email" required placeholder="Email Admin" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                  <input type="password" id="new-adm-pass" required placeholder="Password Login" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                  <input type="text" id="new-adm-phone" required placeholder="No WhatsApp (081...)" class="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs">
+                </div>
+                <button type="submit" class="w-full py-3 ${accent.bg} text-white font-bold rounded-xl text-xs transition">Tambah Admin Baru</button>
+              </form>
+            ` : `
+              <p class="text-xs text-amber-600 font-bold text-center py-2">Batas maksimal 5 Admin telah tercapai.</p>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    function handleAddAdmin(e) {
+      e.preventDefault();
+      if (APP_STATE.admins.length >= 5) return showToast('Maksimal 5 admin!', 'error');
+
+      const name = document.getElementById('new-adm-name').value.trim();
+      const email = document.getElementById('new-adm-email').value.trim();
+      const password = document.getElementById('new-adm-pass').value.trim();
+      const phone = document.getElementById('new-adm-phone').value.trim();
+
+      if (APP_STATE.admins.some(a => a.email.toLowerCase() === email.toLowerCase())) {
+        return showToast('Email admin sudah terdaftar!', 'error');
+      }
+
+      APP_STATE.admins.push({ id: 'adm_' + Date.now(), name, email, password, phone, role: 'Admin', createdAt: new Date().toISOString().split('T')[0] });
+      saveData();
+      showToast('Admin berhasil ditambahkan!', 'success');
+      renderApp();
+    }
+
+    function removeAdmin(id) {
+      if (APP_STATE.admins.length <= 1) return showToast('Minimal harus ada 1 admin!', 'error');
+      APP_STATE.admins = APP_STATE.admins.filter(a => a.id !== id);
+      saveData();
+      showToast('Admin dihapus.', 'info');
+      renderApp();
+    }
+
+    function renderSettingsView() {
+      const accent = getAccentClasses();
+      const themesList = [
+        { id: 'slate', name: 'Slate Modern', class: 'bg-slate-900' },
+        { id: 'emerald', name: 'Emerald Forest', class: 'bg-emerald-700' },
+        { id: 'indigo', name: 'Royal Indigo', class: 'bg-indigo-600' },
+        { id: 'amber', name: 'Warm Amber', class: 'bg-amber-600' },
+        { id: 'rose', name: 'Crimson Rose', class: 'bg-rose-600' }
+      ];
+
+      return `
+        <div class="max-w-xl mx-auto space-y-6 pb-24 lg:pb-8">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Pengaturan & Judul Web</h2>
+            <p class="text-sm text-slate-500">Ubah judul web, deskripsi, logo, dan tema warna</p>
+          </div>
+
+          <div class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Pilih Warna Tema</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              ${themesList.map(t => `
+                <button 
+                  onclick="setAccentColor('${t.id}')"
+                  class="p-3 rounded-2xl border flex items-center gap-3 transition ${APP_STATE.accentColor === t.id ? 'border-slate-900 dark:border-white ring-2 ring-slate-900' : 'border-slate-200 dark:border-slate-700'}"
+                >
+                  <span class="w-6 h-6 rounded-lg ${t.class}"></span>
+                  <span class="font-bold text-xs">${t.name}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <form onsubmit="handleSaveSettings(event)" class="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-white uppercase tracking-wider">Informasi Web & Logo</h3>
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Judul Web</label>
+              <input type="text" id="setting-app-title" required value="${APP_STATE.settings.appTitle}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Nama Kedai / Perusahaan</label>
+              <input type="text" id="setting-company" required value="${APP_STATE.settings.companyName}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Upload Logo Foto</label>
+              <input type="file" id="setting-logo-file" accept="image/*" onchange="previewCompanyLogo(event)" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white">
+              <div class="mt-3 ${APP_STATE.settings.companyLogo ? '' : 'hidden'}" id="logo-preview-container">
+                <img id="logo-preview" src="${APP_STATE.settings.companyLogo}" class="w-16 h-16 object-cover rounded-2xl border">
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-4 ${accent.bg} text-white font-bold rounded-2xl shadow-lg transition text-sm">
+              Simpan Pengaturan
+            </button>
+          </form>
+        </div>
+      `;
+    }
+
+    let tempCompanyLogoBase64 = APP_STATE.settings.companyLogo;
+    function previewCompanyLogo(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          tempCompanyLogoBase64 = e.target.result;
+          const container = document.getElementById('logo-preview-container');
+          const img = document.getElementById('logo-preview');
+          if (container && img) {
+            img.src = tempCompanyLogoBase64;
+            container.classList.remove('hidden');
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    function handleSaveSettings(e) {
+      e.preventDefault();
+      APP_STATE.settings.appTitle = document.getElementById('setting-app-title').value.trim();
+      APP_STATE.settings.companyName = document.getElementById('setting-company').value.trim();
+      APP_STATE.settings.companyLogo = tempCompanyLogoBase64;
+      saveData();
+      showToast('Pengaturan disimpan!', 'success');
+      renderApp();
+    }
+
+    /* MODALS & ACTIONS */
+    function openAddCrewModal() {
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <h3 class="font-bold text-lg text-slate-900 dark:text-white">Tambah Crew Baru</h3>
+          <form onsubmit="handleCreateCrew(event)" class="space-y-3">
+            <input type="text" id="add-crew-id" required value="CRW0${APP_STATE.crews.length + 1}" class="w-full p-3 bg-slate-100 dark:bg-slate-900 border rounded-xl text-xs font-mono font-bold" readonly>
+            <input type="text" id="add-crew-name" required placeholder="Nama Lengkap" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="add-crew-pos" required placeholder="Posisi (Barista/Cashier)" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="add-crew-dept" required placeholder="Departemen (Service/Kitchen)" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="add-crew-phone" required placeholder="No HP/WhatsApp" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            
+            <div class="flex gap-2 pt-2">
+              <button type="submit" class="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">Daftarkan Crew</button>
+              <button type="button" onclick="document.getElementById('dynamic-modal').remove()" class="py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Batal</button>
+            </div>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function handleCreateCrew(e) {
+      e.preventDefault();
+      const crewId = document.getElementById('add-crew-id').value.trim();
+      const name = document.getElementById('add-crew-name').value.trim();
+      const position = document.getElementById('add-crew-pos').value.trim();
+      const department = document.getElementById('add-crew-dept').value.trim();
+      const phone = document.getElementById('add-crew-phone').value.trim();
+
+      const newCrew = {
+        id: 'crw_' + Date.now(),
+        crewId,
+        name,
+        position,
+        department,
+        phone,
+        password: crewId, // Default password is ID Crew
+        photo: '',
+        status: 'Active',
+        createdAt: new Date().toISOString().split('T')[0]
+      };
+
+      APP_STATE.crews.push(newCrew);
+      saveData();
+      document.getElementById('dynamic-modal').remove();
+      showToast(`Crew ${name} berhasil ditambahkan! Sandi awal: ${crewId}`, 'success');
+      renderApp();
+    }
+
+    function openBarcodeModal(crewId) {
+      const crew = APP_STATE.crews.find(c => c.crewId === crewId);
+      if (!crew) return;
+
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700 text-center">
+          <h3 class="font-bold text-lg text-slate-900 dark:text-white">${crew.name}</h3>
+          <p class="text-xs text-slate-500">${crew.position} (${crew.crewId})</p>
+          
+          <div class="bg-white p-4 rounded-2xl border border-slate-200 flex flex-col items-center justify-center">
+            <div id="modal-qrcode-box" class="w-48 h-48 flex items-center justify-center"></div>
+            <span class="mt-2 text-xs font-mono font-bold text-slate-700">${crew.crewId}</span>
+          </div>
+
+          <div class="flex gap-2">
+            <button onclick="downloadCrewBarcode('${crew.crewId}')" class="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">Download Barcode</button>
+            <button onclick="document.getElementById('dynamic-modal').remove()" class="py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Tutup</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      setTimeout(() => {
+        const qrContainer = document.getElementById('modal-qrcode-box');
+        if (qrContainer) {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: crew.crewId,
+            width: 170,
+            height: 170,
+            colorDark: "#020617",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+          });
+        }
+      }, 50);
+    }
+
+    function openManualInputModal() {
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <h3 class="font-bold text-lg text-slate-900 dark:text-white">Input ID Manual</h3>
+          <input type="text" id="manual-crew-input" placeholder="CRW001" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm uppercase font-mono">
+          <div class="flex gap-2">
+            <button onclick="submitManualInput()" class="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">Proses Scan</button>
+            <button onclick="document.getElementById('dynamic-modal').remove()" class="py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Batal</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function submitManualInput() {
+      const val = document.getElementById('manual-crew-input').value.trim();
+      if (val) {
+        document.getElementById('dynamic-modal').remove();
+        processScanBarcode(val);
+        if (APP_STATE.activeTab !== 'scan') switchTab('scan');
+      }
+    }
+
+    function openEditCrewModal(id) {
+      const crew = APP_STATE.crews.find(c => c.id === id);
+      if (!crew) return;
+
+      const modal = document.createElement('div');
+      modal.id = 'dynamic-modal';
+      modal.className = 'fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4';
+      modal.innerHTML = `
+        <div class="bg-white dark:bg-slate-800 rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 dark:border-slate-700">
+          <h3 class="font-bold text-lg text-slate-900 dark:text-white">Edit Data & Sandi Crew</h3>
+          <div class="space-y-3">
+            <input type="text" id="edit-name" value="${crew.name}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="edit-pos" value="${crew.position}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="edit-dept" value="${crew.department}" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+            <input type="text" id="edit-pass" value="${crew.password || crew.crewId}" placeholder="Sandi Login Crew" class="w-full p-3 bg-slate-50 dark:bg-slate-900 border rounded-xl text-xs">
+          </div>
+          <div class="flex gap-2 pt-2">
+            <button onclick="saveEditCrew('${crew.id}')" class="flex-1 py-3 bg-slate-900 text-white font-bold rounded-xl text-xs">Simpan Permanen</button>
+            <button onclick="document.getElementById('dynamic-modal').remove()" class="py-3 px-4 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Batal</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+    }
+
+    function saveEditCrew(id) {
+      const crew = APP_STATE.crews.find(c => c.id === id);
+      if (crew) {
+        crew.name = document.getElementById('edit-name').value.trim();
+        crew.position = document.getElementById('edit-pos').value.trim();
+        crew.department = document.getElementById('edit-dept').value.trim();
+        crew.password = document.getElementById('edit-pass').value.trim();
+        saveData();
+        document.getElementById('dynamic-modal').remove();
+        showToast('Data crew berhasil diperbarui permanen!', 'success');
+        renderApp();
+      }
+    }
+
+    function deleteCrew(id) {
+      if (confirm('Hapus crew dari database?')) {
+        APP_STATE.crews = APP_STATE.crews.filter(c => c.id !== id);
+        saveData();
+        showToast('Crew dihapus.', 'info');
+        renderApp();
+      }
+    }
+
+    function togglePasswordVisibility(inputId, iconId) {
+      const input = document.getElementById(inputId);
+      const icon = document.getElementById(iconId);
+      if (!input || !icon) return;
+
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.remove('fa-eye');
+        icon.classList.add('fa-eye-slash');
+      } else {
+        input.type = 'password';
+        icon.classList.remove('fa-eye-slash');
+        icon.classList.add('fa-eye');
+      }
+    }
+
+    function exportHistoryExcel() {
+      const ws = XLSX.utils.json_to_sheet(APP_STATE.breaks);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "BreakHistory");
+      XLSX.writeFile(wb, "Crew_Break_History.xlsx");
+      showToast('File Excel berhasil diunduh!', 'success');
+    }
+
+    function switchTab(tabId) {
+      if (APP_STATE.scanner && tabId !== 'scan') {
+        stopScanner();
+      }
+      APP_STATE.activeTab = tabId;
+      renderApp();
+      window.scrollTo(0, 0);
+    }
+
+    function renderApp() {
+      const appEl = document.getElementById('app');
+      if (!appEl) return;
+
+      if (!APP_STATE.currentUser) {
+        appEl.innerHTML = renderLoginView();
+        return;
+      }
+
+      let contentHtml = '';
+      const tab = APP_STATE.activeTab;
+
+      if (APP_STATE.currentUser.roleType === 'admin') {
+        switch (tab) {
+          case 'dashboard': contentHtml = renderDashboardView(); break;
+          case 'scan': contentHtml = renderScanView(); break;
+          case 'active': contentHtml = renderActiveView(); break;
+          case 'history': contentHtml = renderHistoryView(); break;
+          case 'crews': contentHtml = renderCrewsView(); break;
+          case 'approvals': contentHtml = renderApprovalsView(); break;
+          case 'statuses': contentHtml = renderStatusesView(); break;
+          case 'breakTypes': contentHtml = renderBreakTypesView(); break;
+          case 'admins': contentHtml = renderAdminsView(); break;
+          case 'settings': contentHtml = renderSettingsView(); break;
+          default: contentHtml = renderDashboardView();
+        }
+      } else {
+        switch (tab) {
+          case 'crew_dashboard': contentHtml = renderCrewDashboardView(); break;
+          case 'crew_breaks': contentHtml = renderCrewBreaksView(); break;
+          case 'crew_requests': contentHtml = renderCrewRequestsView(); break;
+          case 'statuses': contentHtml = renderStatusesView(); break;
+          case 'crew_profile': contentHtml = renderCrewProfileView(); break;
+          default: contentHtml = renderCrewDashboardView();
+        }
+      }
+
+      appEl.innerHTML = `
+        ${renderNavigation()}
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          ${contentHtml}
+        </main>
+      `;
+
+      if (tab === 'crew_profile') {
+        setTimeout(() => {
+          const qrBox = document.getElementById('crew-self-qrcode-box');
+          if (qrBox && APP_STATE.currentUser.crewId) {
+            qrBox.innerHTML = '';
+            new QRCode(qrBox, {
+              text: APP_STATE.currentUser.crewId,
+              width: 170,
+              height: 170,
+              colorDark: "#020617",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }
+        }, 50);
+      }
+
+      startLiveTimers();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initSeedData();
+      renderApp();
+    });
+  </script>
+</body>
+</html>
